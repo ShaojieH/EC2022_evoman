@@ -1,5 +1,6 @@
 import multiprocessing
 import sys
+from operator import itemgetter
 
 sys.path.insert(0, 'evoman')
 from environment import Environment
@@ -17,7 +18,7 @@ experiment_name = 'my_specialist_demo'
 if not os.path.exists(experiment_name):
     os.makedirs(experiment_name)
 
-if run_mode == 'train':
+if run_mode != 'test':
     os.environ["SDL_VIDEODRIVER"] = "dummy"
 
 n_hidden_neurons = 10
@@ -36,8 +37,9 @@ n_vars = (env.get_num_sensors() + 1) * n_hidden_neurons + (n_hidden_neurons + 1)
 dom_u = 1
 dom_l = -1
 population_number = 50
-generation_count = 20
-mutation_rate = 0.20
+generation_count = 30
+mutation_rate = 0.15
+mutation_sigma = 1
 
 creator.create("FitnessMax", base.Fitness, weights=(1.0,))
 creator.create("Individual", np.ndarray, fitness=creator.FitnessMax)
@@ -55,6 +57,16 @@ def evaluate(x):
     return simulation(env, x),
 
 
+# normalizes
+def normalize(fit):
+    max_fitness = max(fit, key=itemgetter(0))[0]
+    min_fitness = min(fit, key=itemgetter(0))[0]
+
+    r = max_fitness - min_fitness
+    normal = map(lambda x: ((x[0] - min_fitness) / r,), fit)
+    return normal
+
+
 if __name__ == '__main__':
 
     if run_mode == 'test':
@@ -63,9 +75,6 @@ if __name__ == '__main__':
         env.update_parameter('speed', 'normal')
         evaluate(bsol)
         sys.exit(0)
-    else:
-
-        os.environ["SDL_VIDEODRIVER"] = "dummy"
 
     pool = multiprocessing.Pool()
     toolbox.register("map", pool.map)
@@ -74,16 +83,18 @@ if __name__ == '__main__':
     toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
     toolbox.register("evaluate", evaluate)
-    toolbox.register("mate", tools.cxTwoPoint)
-    toolbox.register("mutate", tools.mutGaussian, mu=0, sigma=1, indpb=mutation_rate)
+    toolbox.register("mate", tools.cxOnePoint)
+    toolbox.register("mutate", tools.mutGaussian, mu=0, sigma=mutation_sigma, indpb=mutation_rate)
     toolbox.register("select", tools.selTournament, tournsize=3)
 
     population = toolbox.population(n=population_number)
 
     for generation in range(generation_count):
         print("###### Current generation:", generation)
-        offspring = algorithms.varAnd(population, toolbox, cxpb=0.5, mutpb=0.2)
+        offspring = algorithms.varAnd(population, toolbox, cxpb=0.7, mutpb=0.9)
         fits = toolbox.map(toolbox.evaluate, offspring)
+        fits = list(normalize(fits))
+        # print(fits)
         for fit, ind in zip(fits, offspring):
             ind.fitness.values = fit
         population = toolbox.select(offspring, k=len(population))
